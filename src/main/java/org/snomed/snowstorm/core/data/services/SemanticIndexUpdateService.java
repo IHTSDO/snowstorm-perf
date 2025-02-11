@@ -807,7 +807,7 @@ public class SemanticIndexUpdateService extends ComponentService implements Comm
 				).withSourceFilter(new FetchSourceFilter( new String[] { REFSET_ID, REFERENCED_COMPONENT_ID }, null))
 				.withPageable(LARGE_PAGE);
 
-		try (final SearchHitsIterator<ReferenceSetMember> refsetMemberships = elasticsearchTemplate.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
+		try (final SearchHitsIterator<ReferenceSetMember> refsetMemberships = elasticsearchOperations.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
 			refsetMemberships.forEachRemaining(hit -> results.computeIfAbsent(parseLong(hit.getContent().getReferencedComponentId()),
 					c -> new HashSet<>()).add(parseLong(hit.getContent().getRefsetId())));
 		}
@@ -824,7 +824,7 @@ public class SemanticIndexUpdateService extends ComponentService implements Comm
 							.must(termsQuery(REFERENCED_COMPONENT_ID, batch)))
 					).withSourceFilter(new FetchSourceFilter(new String[] { REFSET_ID, REFERENCED_COMPONENT_ID }, null))
 					.withPageable(LARGE_PAGE);
-			try (final SearchHitsIterator<ReferenceSetMember> refsetMemberships = elasticsearchTemplate.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
+			try (final SearchHitsIterator<ReferenceSetMember> refsetMemberships = elasticsearchOperations.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
 				refsetMemberships.forEachRemaining(hit -> results.computeIfAbsent(parseLong(hit.getContent().getReferencedComponentId()), c -> new HashSet<>()).add(parseLong(hit.getContent().getRefsetId())));
 			}
 		}
