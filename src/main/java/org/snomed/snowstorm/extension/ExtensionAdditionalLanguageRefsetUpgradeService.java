@@ -63,12 +63,23 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 	private VersionControlHelper versionControlHelper;
 
 	@Autowired
-	private ElasticsearchOperations elasticsearchTemplate;
+	private ElasticsearchOperations elasticsearchOperations;
 
 	@Autowired
 	private CodeSystemVersionService codeSystemVersionService;
 
 	private final Logger logger = LoggerFactory.getLogger(ExtensionAdditionalLanguageRefsetUpgradeService.class);
+
+	private final Comparator<ReferenceSetMember> comparatorByEffectiveTimeInDescendingOrderOrNull = (m1, m2) -> {
+		if (m1.getEffectiveTimeI() == null && m2.getEffectiveTimeI() == null) {
+			return 0;
+		} else if (m1.getEffectiveTimeI() == null) {
+			return -1; // Null values come first
+		} else if (m2.getEffectiveTimeI() == null) {
+			return 1; // Null values come first
+		}
+		return m2.getEffectiveTimeI().compareTo(m1.getEffectiveTimeI());
+	};
 
 	@PreAuthorize("hasPermission('ADMIN', #codeSystem.branchPath) || hasPermission('RELEASE_LEAD', #codeSystem.branchPath)")
 	public void generateAdditionalLanguageRefsetDelta(CodeSystem codeSystem, String branchPath, String languageRefsetId, Boolean completeCopy) {
@@ -127,7 +138,7 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 				.withSourceFilter(new FetchSourceFilter(new String[]{REFERENCED_COMPONENT_ID, ACTIVE, ACCEPTABILITY_ID_FIELD_PATH}, null))
 				.withPageable(LARGE_PAGE);
 
-		try (final SearchHitsIterator<ReferenceSetMember> referencedComponents = elasticsearchTemplate.searchForStream(searchQueryBuilder.build(), ReferenceSetMember.class)) {
+		try (final SearchHitsIterator<ReferenceSetMember> referencedComponents = elasticsearchOperations.searchForStream(searchQueryBuilder.build(), ReferenceSetMember.class)) {
 			referencedComponents.forEachRemaining(hit -> result.add(copy(hit.getContent(), config)));
 		}
 		return result;
@@ -150,7 +161,7 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 			// for incremental monthly upgrade
 			searchQueryBuilder.withFilter(termQuery(EFFECTIVE_TIME, currentDependantEffectiveTime));
 		}
-		try (final SearchHitsIterator<ReferenceSetMember> referencedComponents = elasticsearchTemplate.searchForStream(searchQueryBuilder.build(), ReferenceSetMember.class)) {
+		try (final SearchHitsIterator<ReferenceSetMember> referencedComponents = elasticsearchOperations.searchForStream(searchQueryBuilder.build(), ReferenceSetMember.class)) {
 			referencedComponents.forEachRemaining(hit ->
 					result.computeIfAbsent(Long.valueOf(hit.getContent().getConceptId()), k -> new ArrayList <>()).add(hit.getContent()));
 		}
@@ -195,10 +206,10 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 	private void addNewLanguageRefsetMembers(AdditionalRefsetExecutionConfig config, Map<Long, List<ReferenceSetMember>> languageRefsetMembersToCopy, Map<Long, List<ReferenceSetMember>> existingLanguageRefsetMembersToUpdate, Set<String> memberIdsToSkipCopy, Set<String> updated, Map<Long, Set<Description>> conceptToDescriptionsMap, List<ReferenceSetMember> result) {
 		for (Long conceptId : languageRefsetMembersToCopy.keySet()) {
 			List<ReferenceSetMember> toCopyLanguageRefsetMembers = languageRefsetMembersToCopy.get(conceptId);
-			Map<String, ReferenceSetMember> languageRefsetMembersToCopyMap = convertMembersListToMap(toCopyLanguageRefsetMembers);
+			Map<String, ReferenceSetMember> languageRefsetMembersToCopyMap = convertMembersListToMapByReferencedComponentIdAndOrderByEffectiveTime(toCopyLanguageRefsetMembers);
 
 			List<ReferenceSetMember> existingRefsetMembers = existingLanguageRefsetMembersToUpdate.get(conceptId);
-			Map<String, ReferenceSetMember> existingLanguageRefsetMembersMap = convertMembersListToMap(existingRefsetMembers);
+			Map<String, ReferenceSetMember> existingLanguageRefsetMembersMap = convertMembersListToMapByReferencedComponentIdAndOrderByEffectiveTime(existingRefsetMembers);
 
 			for (ReferenceSetMember toCopyMember : toCopyLanguageRefsetMembers) {
 				if (!memberIdsToSkipCopy.contains(toCopyMember.getMemberId()) && !updated.contains(toCopyMember.getReferencedComponentId())
@@ -216,12 +227,12 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 		for (Long conceptId : existingLanguageRefsetMembersToUpdate.keySet()) {
 			List<ReferenceSetMember> existingRefsetMembers = existingLanguageRefsetMembersToUpdate.get(conceptId);
 			if (languageRefsetMembersToCopy.containsKey(conceptId)) {
-				Map<String, ReferenceSetMember> languageRefsetMembersToCopyMap = convertMembersListToMap(languageRefsetMembersToCopy.get(conceptId));
-				Map<String, ReferenceSetMember> existingLanguageRefsetMembersMap = convertMembersListToMap(existingRefsetMembers);
-				for (ReferenceSetMember existingRefsetMember : existingRefsetMembers) {
-					if (languageRefsetMembersToCopyMap.containsKey(existingRefsetMember.getReferencedComponentId())
-						&& isAbleToAddOrUpdate(existingRefsetMember.getReferencedComponentId(), config.getDefaultModuleId(), languageRefsetMembersToCopyMap, existingLanguageRefsetMembersMap, conceptToDescriptionsMap)) {
-						update(existingRefsetMember, languageRefsetMembersToCopyMap, result, memberIdsToSkipCopy);
+				Map<String, ReferenceSetMember> languageRefsetMembersToCopyMap = convertMembersListToMapByReferencedComponentIdAndOrderByEffectiveTime(languageRefsetMembersToCopy.get(conceptId));
+				Map<String, ReferenceSetMember> existingLanguageRefsetMembersMap = convertMembersListToMapByReferencedComponentIdAndOrderByEffectiveTime(existingRefsetMembers);
+				for (ReferenceSetMember existing : existingLanguageRefsetMembersMap.values()) {
+					if (languageRefsetMembersToCopyMap.containsKey(existing.getReferencedComponentId())
+							&& isAbleToAddOrUpdate(existing.getReferencedComponentId(), config.getDefaultModuleId(), languageRefsetMembersToCopyMap, existingLanguageRefsetMembersMap, conceptToDescriptionsMap)) {
+						update(existing, languageRefsetMembersToCopyMap, result, memberIdsToSkipCopy);
 					}
 				}
 			}
@@ -239,7 +250,7 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 					.withFilter(termsQuery(DESCRIPTION_ID, batch))
 					.withPageable(LARGE_PAGE);
 
-			try (final SearchHitsIterator<Description> searchHitsIterator = elasticsearchTemplate.searchForStream(queryBuilder.build(), Description.class)) {
+			try (final SearchHitsIterator<Description> searchHitsIterator = elasticsearchOperations.searchForStream(queryBuilder.build(), Description.class)) {
 				searchHitsIterator.forEachRemaining(hit -> conceptToDescriptionsMap.computeIfAbsent(Long.valueOf(hit.getContent().getConceptId()), k -> new HashSet<>()).add(hit.getContent()));
 			}
 		}
@@ -258,7 +269,7 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 							.must(termsQuery(ReferenceSetMember.Fields.CONCEPT_ID, batch)))
 					).withPageable(LARGE_PAGE);
 
-			try (final SearchHitsIterator<ReferenceSetMember> searchHitsIterator = elasticsearchTemplate.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
+			try (final SearchHitsIterator<ReferenceSetMember> searchHitsIterator = elasticsearchOperations.searchForStream(queryBuilder.build(), ReferenceSetMember.class)) {
 				searchHitsIterator.forEachRemaining(hit -> {
 					existingLanguageRefsetMembersToUpdate.computeIfAbsent(Long.valueOf(hit.getContent().getConceptId()), k -> new ArrayList <>()).add(hit.getContent());
 					descriptionIds.add(Long.valueOf(hit.getContent().getReferencedComponentId()));
@@ -291,15 +302,23 @@ public class ExtensionAdditionalLanguageRefsetUpgradeService {
 						if (existing != null && existing.isActive() && Concepts.PREFERRED.equals(existing.getAdditionalField(ACCEPTABILITY_ID))) {
 							return true;
 						}
-
 				}
 			}
 		}
 		return false;
 	}
 
-	private Map<String, ReferenceSetMember> convertMembersListToMap(List<ReferenceSetMember> members) {
-		return members == null ? new HashMap<>() : members.stream().collect(Collectors.toMap(ReferenceSetMember::getReferencedComponentId, Function.identity()));
+	private Map<String, ReferenceSetMember> convertMembersListToMapByReferencedComponentIdAndOrderByEffectiveTime(List<ReferenceSetMember> members) {
+		if (members == null) {
+			return new HashMap<>();
+		}
+		Set<String> refsetIds = members.stream().map(ReferenceSetMember::getRefsetId).collect(Collectors.toSet());
+		if (refsetIds.size() != 1) {
+			logger.warn("Members should have the same refset id but found multiple refset ids: {}", refsetIds);
+			throw new IllegalArgumentException("Members should have the same refset id.");
+		}
+		return members.stream().sorted(comparatorByEffectiveTimeInDescendingOrderOrNull)
+				.collect(Collectors.toMap(ReferenceSetMember::getReferencedComponentId, Function.identity(), (latest, existing) -> latest));
 	}
 
 	private ReferenceSetMember copy(ReferenceSetMember enGbMember, AdditionalRefsetExecutionConfig config) {

@@ -94,6 +94,8 @@ public class QueryConcept extends DomainEntity<QueryConcept> implements FHIRGrap
 		if (groupedAttributesMap != null) {
 			groupedAttributesMap.clear();
 		}
+		attrMap = null;
+		attr = null;
 	}
 
 	public void addAttribute(int group, Long type, Object value) {
@@ -271,7 +273,6 @@ public class QueryConcept extends DomainEntity<QueryConcept> implements FHIRGrap
 	public void setRefsets(Set<Long> refsets) {
 		this.refsets = refsets;
 	}
-
 
 	@Override
 	public String toString() {
