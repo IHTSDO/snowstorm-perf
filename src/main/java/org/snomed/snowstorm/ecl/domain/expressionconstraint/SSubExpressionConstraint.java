@@ -339,9 +339,18 @@ public class SSubExpressionConstraint extends SubExpressionConstraint implements
                                     .should(termsQuery(QueryConcept.Fields.CONCEPT_ID, retrieveAllAncestors(conceptIds, branchCriteria, stated, conceptSelector)))
                                     .should(termsQuery(QueryConcept.Fields.CONCEPT_ID, conceptIds)))
                     );
-            case memberOf ->
-                // ^
-				queryBuilder.must(termsQuery(QueryConcept.Fields.REFSETS, conceptIds));
+            case memberOf -> {
+							// ^
+										if (memberFilterConstraints != null && !memberFilterConstraints.isEmpty()) {
+											Set<Long> conceptIdsInReferenceSet = conceptSelector.findConceptIdsInReferenceSet(
+													conceptIds, getMemberFilterConstraints(), refinementBuilder);
+											queryBuilder.filter(
+													termsQuery(QueryConcept.Fields.CONCEPT_ID, conceptIdsInReferenceSet));
+											return conceptIdsInReferenceSet;
+										} else {
+											queryBuilder.must(termsQuery(QueryConcept.Fields.REFSETS, conceptIds));
+										}
+						}
         }
 		return null;
 	}

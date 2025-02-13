@@ -579,7 +579,7 @@ public class SemanticIndexUpdateService extends ComponentService implements Comm
 										.mustNot(termsQuery(Relationship.Fields.SOURCE_ID, updateSource))
 						)))
 				)
-				.withSourceFilter(new FetchSourceFilter(new String[]{Relationship.Fields.SOURCE_ID}, null))
+				.withSourceFilter(new FetchSourceFilter(new String[] { Relationship.Fields.SOURCE_ID }, null))
 				.withPageable(LARGE_PAGE)
 				.build(), Relationship.class)) {
 			otherChangedRelationships.forEachRemaining(hit -> updateSource.add(parseLong(hit.getContent().getSourceId())));
@@ -683,7 +683,7 @@ public class SemanticIndexUpdateService extends ComponentService implements Comm
 						.must(termQuery(QueryConcept.Fields.STATED, stated))
 						.filter(termsQuery(QueryConcept.Fields.CONCEPT_ID, nodesToLoad)))
 				)
-				.withSourceFilter(new FetchSourceFilter(new String[]{QueryConcept.Fields.CONCEPT_ID, QueryConcept.Fields.PARENTS, QueryConcept.Fields.ANCESTORS}, null))
+				.withSourceFilter(new FetchSourceFilter(new String[] { QueryConcept.Fields.CONCEPT_ID, QueryConcept.Fields.PARENTS, QueryConcept.Fields.ANCESTORS }, null))
 				.withPageable(LARGE_PAGE);
 
 		try (SearchHitsIterator<QueryConcept> queryConcepts = elasticsearchOperations.searchForStream(queryConceptQuery.build(), QueryConcept.class)) {
@@ -775,7 +775,7 @@ public class SemanticIndexUpdateService extends ComponentService implements Comm
 						.must(termQuery(SnomedComponent.Fields.ACTIVE, true))
 						.filter(termsQuery(Concept.Fields.CONCEPT_ID, requiredActiveConcepts)))
 				)
-				.withSourceFilter(new FetchSourceFilter(new String[]{Concept.Fields.CONCEPT_ID}, null))
+				.withSourceFilter(new FetchSourceFilter(new String[] { Concept.Fields.CONCEPT_ID }, null))
 				.withPageable(PageRequest.of(0, 1));
 
 		Query activeQuery = queryBuilder.build();
